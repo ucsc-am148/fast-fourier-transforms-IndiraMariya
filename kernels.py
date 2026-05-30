@@ -50,7 +50,9 @@ def _cdot(a_re, a_im, b_re, b_im):
 
     TODO: implement.
     """
-    pass
+    # pass
+    return (tl.dot(a_re, b_re, out_dtype=tl.float32) - tl.dot(a_im, b_im, out_dtype=tl.float32),
+            tl.dot(a_re, b_im, out_dtype=tl.float32) + tl.dot(a_im, b_re, out_dtype=tl.float32))
 
 
 # =============================================================================
@@ -104,17 +106,47 @@ def f1_kernel(
 
     TODO: implement.
     """
-    pass
+    row = tl.program_id(0)
+    col = tl.program_id(1)
 
+    row_offs = tl.arange(0,BLOCK_M) + row * BLOCK_M
+    col_offs = tl.arange(0,BLOCK_N) + col * BLOCK_N
+
+    acc_re = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    acc_im = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+
+    for k_start in range(0, N, BLOCK_K):
+        k_offs = tl.arange(0, BLOCK_K) + k_start
+
+        x_re = tl.load(x_re_ptr + (row_offs[:, None] * N + k_offs[None, :]))
+        x_im = tl.load(x_im_ptr + (row_offs[:, None] * N + k_offs[None, :]))
+        w_re = tl.load(W_re_ptr + col_offs[:, None] * N + k_offs[None, :])
+        w_im = tl.load(W_im_ptr + col_offs[:, None] * N + k_offs[None, :])
+
+        w_re_t = tl.trans(w_re)
+        w_im_t = tl.trans(w_im)
+        
+        re, im = _cdot(x_re, x_im, w_re_t, w_im_t)
+        acc_re += re
+        acc_im += im
+
+    tl.store(y_re_ptr + row_offs[:,None] * N + col_offs[None,:] , acc_re)
+    tl.store(y_im_ptr + row_offs[:,None] * N + col_offs[None,:], acc_im)
 
 def f1_launch(x_re, x_im, W_re, W_im, y_re, y_im):
     """Grid: (cdiv(B, BLOCK_M), cdiv(N, BLOCK_N)). One program tiles a
     (BLOCK_M, BLOCK_N) output square. tl.dot needs all three dims >=16, so B
     should be >= 16.
 
-    TODO: implement.
+    TODO:implement.
     """
-    raise NotImplementedError("TODO: implement f1_launch")
+    B, N = x_re.shape
+    BLOCK_M = 16
+    BLOCK_N = 16
+    BLOCK_K = 16
+    grid = (triton.cdiv(B, BLOCK_M), triton.cdiv(N, BLOCK_N))
+    f1_kernel[grid](x_re, x_im,W_re,W_im, y_re, y_im, B, N=N ,BLOCK_M=BLOCK_M, BLOCK_K = BLOCK_K, BLOCK_N=BLOCK_N )
+
 
 
 # =============================================================================
@@ -182,8 +214,24 @@ def transpose_kernel(
 
     TODO: implement.
     """
-    pass
+    pid_r = tl.program_id(0)
+    pid_c = tl.program_id(1)
+    pid_b = tl.program_id(2)
 
+    r_start = pid_r * BLOCK_R
+    c_start = pid_c * BLOCK_C
+
+    r_offs = tl.arange(0, BLOCK_R) + r_start
+    c_offs = c_start + tl.arange(0,BLOCK_C)
+
+    in_addr = pid_b*(R*C) + r_offs[:, None] * C + c_offs[None, :] #this makes r_offs a column vector and c_offs a row vector, so the broadcasting gives the full (BLOCK_R, BLOCK_C) tile
+    out_addr = pid_b*(R*C) + c_offs[:,None]*R + r_offs[None, :]
+    
+    mask = (r_offs[:, None] < R) & (c_offs[None, :] < C) # mask to ensure the calcualted offsets are within range 
+    x_re = tl.load(x_re_ptr + in_addr, mask = mask)   
+    x_im = tl.load(x_im_ptr + in_addr, mask = mask)
+    tl.store(y_re_ptr + out_addr, x_re)
+    tl.store(y_im_ptr + out_addr, x_im)
 
 # =============================================================================
 # F4: tcFFT radix-16 single-program FFT (N = 256, L = 2)

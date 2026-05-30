@@ -116,8 +116,17 @@ def make_dft_matrix(
 
     W[j, k] = exp(-2*pi*i * j * k / N). Used by F1 (DFT-as-complex-matmul).
     """
-    raise NotImplementedError("TODO: implement make_dft_matrix")
+    # raise NotImplementedError("TODO: implement make_dft_matrix")
 
+    W_re = torch.zeros((N, N), dtype=dtype, device=device)
+    W_im = torch.zeros((N, N), dtype=dtype, device=device)
+    
+    for j in range(N):
+        for k in range(N):
+            W_re[j,k] = math.cos(-2*math.pi * j * k / N)
+            W_im[j,k] = math.sin(-2*math.pi * j * k / N)
+    
+    return W_re, W_im
 
 def make_dft_R_padded(
     R: int,
