@@ -15,9 +15,7 @@ and sanity_check.py will FAIL if you return something else.
 """
 
 import math
-
 import torch
-
 
 # =============================================================================
 # Pattern 1: radix-2 length-N/2 twiddles  (F2, F3)
@@ -33,7 +31,15 @@ def make_radix2_twiddles(
     Used by the radix-2 butterfly: stage s reads twiddle at index
     (k & (2**s - 1)) * (N >> (s+1)), so the table only needs the lower half
     of one full period."""
-    raise NotImplementedError("TODO: implement make_radix2_twiddles")
+    
+    tw_re = torch.zeros(N//2, dtype=dtype, device=device)
+    tw_im = torch.zeros(N//2, dtype=dtype, device=device)
+    
+    k = torch.arange(N//2, dtype=dtype, device=device)
+    tw_re = torch.cos(2 * math.pi * k / N)
+    tw_im = -torch.sin(2 * math.pi * k / N)
+
+    return tw_re, tw_im
 
 
 # =============================================================================
@@ -100,8 +106,13 @@ def make_bailey_cross_twiddles(
     F5/F6/F7 call it with dtype=torch.float16 (the tcFFT tier is fp16). The
     Bailey identity holds for any N >= m0 * M; in practice N == m0 * M.
     """
-    raise NotImplementedError("TODO: implement make_bailey_cross_twiddles")
+    n1 = torch.arange(m0)[:, None] #shape (m0, 1)
+    kM = torch.arange(M)[None, :] #shape (1, M)
+    angle = -2*math.pi * n1 * kM / N #shape #(m0, M) by broadcasting
 
+    re = torch.cos(angle).to(dtype=dtype, device=device)
+    im = torch.sin(angle).to(dtype=dtype, device=device)
+    return re, im
 
 # =============================================================================
 # Scaffolding tables
@@ -147,4 +158,10 @@ def bit_reversal_perm(N: int, device: str = 'cuda') -> torch.Tensor:
     rev[i] is the integer whose n_bits=log2(N) binary representation is i's
     bits in reversed order.
     """
-    raise NotImplementedError("TODO: implement bit_reversal_perm")
+    # can fix this to not use a for loop later
+    res =  torch.zeros(N, dtype=torch.int32, device=device)
+    n_bits = int(math.log2(N))
+
+    for i in range(N):
+        res[i] = int(format(i, f'0{n_bits}b')[::-1],2)
+    return res

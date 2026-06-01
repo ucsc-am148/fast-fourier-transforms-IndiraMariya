@@ -186,7 +186,38 @@ def f2_kernel(
 
     TODO: implement.
     """
-    pass
+    pid_b = tl.program_id(0)
+    i = tl.arange(0, N)
+    offs = pid_b*N + i
+
+    rev = tl.load(perm_ptr + i)
+    x_re = tl.load(x_re_ptr + pid_b*N + rev)
+    x_im = tl.load(x_im_ptr + pid_b*N + rev)
+
+    for stage in range (LOG2_N):
+        partner_idx = i ^ (1 << stage)
+        re_p = tl.gather(x_re,partner_idx,0)
+        im_p = tl.gather(x_im,partner_idx,0)
+        
+        tw_idx = (i & ((1 << stage) - 1)) * (N >> (stage + 1))
+        tw_re = tl.load(tw_re_ptr + tw_idx)
+        tw_im = tl.load(tw_im_ptr + tw_idx)
+
+        wb_re = tw_re * re_p - tw_im * im_p
+        wb_im = tw_re * im_p + tw_im * re_p
+
+        new_a_re = x_re + wb_re
+        new_a_im = x_im + wb_im
+        new_b_re = re_p - (tw_re * x_re - tw_im * x_im)
+        new_b_im = im_p - (tw_re * x_im + tw_im * x_re)
+
+        mask = (i & (1 << stage)) == 0
+        x_re = tl.where(mask, new_a_re, new_b_re)
+        x_im = tl.where(mask, new_a_im, new_b_im)
+
+    tl.store(y_re_ptr + offs, x_re)
+    tl.store(y_im_ptr + offs, x_im)
+
 
 
 def f2_launch(x_re, x_im, y_re, y_im, tw_re, tw_im, perm):
@@ -194,7 +225,16 @@ def f2_launch(x_re, x_im, y_re, y_im, tw_re, tw_im, perm):
 
     TODO: implement.
     """
-    raise NotImplementedError("TODO: implement f2_launch")
+    B, N = x_re.shape  
+    LOG_2 = int(math.log2(N))
+    grid = (B,)
+    f2_kernel[grid](
+        x_re, x_im, y_re, y_im, tw_re, tw_im, perm,
+        tw_re,tw_im,
+        1,0,
+        N=N, LOG2_N=LOG_2,
+        BAILEY_EPILOGUE=False, STRIDED_STORE=False,
+        )
 
 
 # =============================================================================
