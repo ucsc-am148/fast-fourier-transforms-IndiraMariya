@@ -85,7 +85,39 @@ def make_radix16_twiddles(
     where e_{L-1-j}_value(c) reads the base-16 digit of c at the position
     given by _column_axis_labeling(L)[s].
     """
-    raise NotImplementedError("TODO: implement make_radix16_twiddles")
+    L = int(round(math.log(N, 16)))
+    cols = N // 16
+    tw_re = torch.zeros(L, 16, cols, device=device)
+    tw_im = torch.zeros(L, 16, cols, device=device)
+
+    # stage 0: all ones (kernel skips the multiply)
+    tw_re[0] = 1.0
+
+    # stages s > 0
+    labels = _column_axis_labeling(L)
+    m = torch.arange(16, device=device).float()   # (16,)
+    c = torch.arange(cols, device=device).float()  # (cols,)
+
+    for s in range(1, L):
+        # build t[c] from the labels at this stage
+        t = torch.zeros(cols, device=device)
+        for j in range(s):
+            label = labels[s][j]   # e.g. ('e', 1) or ('d', 1)
+            # which base-16 digit of c does this label correspond to?
+            # digit position from the right = j (16^j weight)
+            digit = (c.long() // (16 ** j)) % 16
+            t = t + digit.float() * (16 ** j)
+
+        # tw[s, m, c] = exp(-2pi*i * m * t / 16^(s+1))
+        denom = 16 ** (s + 1)
+        angle = -2 * math.pi * m[:, None] * t[None, :] / denom  # (16, cols)
+        tw_re[s] = torch.cos(angle)
+        tw_im[s] = torch.sin(angle)
+
+    return (tw_re.to(torch.float16).to(device),
+            tw_im.to(torch.float16).to(device))
+
+
 
 
 # =============================================================================
@@ -149,7 +181,15 @@ def make_dft_R_padded(
     first R columns are F_R (rows wrap mod R), take the first R output rows.
     This makes the >=16x16 tl.dot requirement hold for all R in {2, 4, 8, 16}.
     """
-    raise NotImplementedError("TODO: implement make_dft_R_padded")
+    rows = torch.arange(16, device=device)   # 0..15
+    cols = torch.arange(16, device=device)   # 0..15    
+    angle = -2 * math.pi * (rows[:, None] % R) * cols[None, :] / R
+    M_re = torch.cos(angle)
+    M_im = torch.sin(angle)
+
+    M_re[:, R:] = 0.0
+    M_im[:, R:] = 0.0
+    return M_re.to(torch.float16), M_im.to(torch.float16)
 
 
 def bit_reversal_perm(N: int, device: str = 'cuda') -> torch.Tensor:
