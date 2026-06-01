@@ -198,10 +198,9 @@ def bit_reversal_perm(N: int, device: str = 'cuda') -> torch.Tensor:
     rev[i] is the integer whose n_bits=log2(N) binary representation is i's
     bits in reversed order.
     """
-    # can fix this to not use a for loop later
-    res =  torch.zeros(N, dtype=torch.int32, device=device)
     n_bits = int(math.log2(N))
-
-    for i in range(N):
-        res[i] = int(format(i, f'0{n_bits}b')[::-1],2)
+    i = torch.arange(N, dtype=torch.int32, device=device)
+    res = torch.zeros(N, dtype=torch.int32, device=device)
+    for bit in range(n_bits):
+        res |= ((i >> bit) & 1) << (n_bits - 1 - bit)
     return res

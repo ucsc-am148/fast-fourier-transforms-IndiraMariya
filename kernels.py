@@ -30,7 +30,6 @@ DFT_BLOCK_B = 16
 SCALE_BLOCK = 32
 TRANSPOSE_BLOCK = 32
 
-
 # =============================================================================
 # Device-function helper: complex matmul
 # =============================================================================
@@ -206,26 +205,29 @@ def f2_kernel(
     x_re = tl.load(x_re_ptr + pid_b*N + rev)
     x_im = tl.load(x_im_ptr + pid_b*N + rev)
 
-    for stage in range (LOG2_N):
+    for stage in range(LOG2_N):
         partner_idx = i ^ (1 << stage)
-        re_p = tl.gather(x_re,partner_idx,0)
-        im_p = tl.gather(x_im,partner_idx,0)
-        
+        re_p = tl.gather(x_re, partner_idx, 0)
+        im_p = tl.gather(x_im, partner_idx, 0)
+
         tw_idx = (i & ((1 << stage) - 1)) * (N >> (stage + 1))
         tw_re = tl.load(tw_re_ptr + tw_idx)
         tw_im = tl.load(tw_im_ptr + tw_idx)
 
-        wb_re = tw_re * re_p - tw_im * im_p
-        wb_im = tw_re * im_p + tw_im * re_p
-
-        new_a_re = x_re + wb_re
-        new_a_im = x_im + wb_im
-        new_b_re = re_p - (tw_re * x_re - tw_im * x_im)
-        new_b_im = im_p - (tw_re * x_im + tw_im * x_re)
-
         mask = (i & (1 << stage)) == 0
-        x_re = tl.where(mask, new_a_re, new_b_re)
-        x_im = tl.where(mask, new_a_im, new_b_im)
+
+        # a is the element where bit s is 0, b is where bit s is 1
+        a_re = tl.where(mask, x_re, re_p)
+        a_im = tl.where(mask, x_im, im_p)
+        b_re = tl.where(mask, re_p, x_re)
+        b_im = tl.where(mask, im_p, x_im)
+
+        # w * b
+        wb_re = tw_re * b_re - tw_im * b_im
+        wb_im = tw_re * b_im + tw_im * b_re
+
+        x_re = tl.where(mask, a_re + wb_re, a_re - wb_re)
+        x_im = tl.where(mask, a_im + wb_im, a_im - wb_im)
 
     if BAILEY_EPILOGUE:
         n1 = pid_b % OUTER_DIM
