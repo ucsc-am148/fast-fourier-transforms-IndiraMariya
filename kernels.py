@@ -214,20 +214,16 @@ def f2_kernel(
         tw_re = tl.load(tw_re_ptr + tw_idx)
         tw_im = tl.load(tw_im_ptr + tw_idx)
 
-        mask = (i & (1 << stage)) == 0
+        mask = (i & (1 << stage)) != 0
 
-        # a is the element where bit s is 0, b is where bit s is 1
-        a_re = tl.where(mask, x_re, re_p)
-        a_im = tl.where(mask, x_im, im_p)
-        b_re = tl.where(mask, re_p, x_re)
-        b_im = tl.where(mask, im_p, x_im)
+        m_re = tl.where(mask, x_re, re_p)
+        m_im = tl.where(mask, x_im, im_p)
 
-        # w * b
-        wb_re = tw_re * b_re - tw_im * b_im
-        wb_im = tw_re * b_im + tw_im * b_re
+        wb_re = tw_re * m_re - tw_im * m_im
+        wb_im = tw_re * m_im + tw_im * m_re
 
-        x_re = tl.where(mask, a_re + wb_re, a_re - wb_re)
-        x_im = tl.where(mask, a_im + wb_im, a_im - wb_im)
+        x_re = tl.where(mask, re_p - wb_re, x_re + wb_re)
+        x_im = tl.where(mask, im_p - wb_im, x_im + wb_im)
 
     if BAILEY_EPILOGUE:
         n1 = pid_b % OUTER_DIM
