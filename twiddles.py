@@ -90,25 +90,18 @@ def make_radix16_twiddles(
     tw_re = torch.zeros(L, 16, cols, device=device)
     tw_im = torch.zeros(L, 16, cols, device=device)
 
-    # stage 0: all ones (kernel skips the multiply)
     tw_re[0] = 1.0
-
-    # stages s > 0
     labels = _column_axis_labeling(L)
     m = torch.arange(16, device=device).float()   # (16,)
     c = torch.arange(cols, device=device).float()  # (cols,)
 
     for s in range(1, L):
-        # build t[c] from the labels at this stage
         t = torch.zeros(cols, device=device)
         for j in range(s):
-            label = labels[s][j]   # e.g. ('e', 1) or ('d', 1)
-            # which base-16 digit of c does this label correspond to?
-            # digit position from the right = j (16^j weight)
+            label = labels[s][j]
             digit = (c.long() // (16 ** j)) % 16
             t = t + digit.float() * (16 ** j)
 
-        # tw[s, m, c] = exp(-2pi*i * m * t / 16^(s+1))
         denom = 16 ** (s + 1)
         angle = -2 * math.pi * m[:, None] * t[None, :] / denom  # (16, cols)
         tw_re[s] = torch.cos(angle)
@@ -159,7 +152,6 @@ def make_dft_matrix(
 
     W[j, k] = exp(-2*pi*i * j * k / N). Used by F1 (DFT-as-complex-matmul).
     """
-    # raise NotImplementedError("TODO: implement make_dft_matrix")
 
     W_re = torch.zeros((N, N), dtype=dtype, device=device)
     W_im = torch.zeros((N, N), dtype=dtype, device=device)
